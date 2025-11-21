@@ -148,7 +148,7 @@ if left_img and right_img:
             report, score, condition = interpret_posture(deviations, label)
 
             st.subheader(f"📸 {label} Side View Analysis")
-            st.image(convert_to_bytes(annotated), caption=f"{label} Side Annotated Image", use_container_width=True)
+            st.image(convert_to_bytes(annotated), caption=f"{label} Side Annotated Image", use_column_width=True)
 
             st.text_area(f"{label} Side Report", report, height=200, disabled=True)
 
