@@ -3,10 +3,16 @@ import cv2
 import mediapipe as mp
 import numpy as np
 from io import BytesIO
+import tempfile
+import os
 
 # Initialize mediapipe pose
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5)
+
+# Initialize session state
+if 'temp_dir' not in st.session_state:
+    st.session_state.temp_dir = tempfile.mkdtemp()
 
 # -----------------------------------
 # Function 1: Detect Key Landmarks
@@ -125,22 +131,35 @@ with col2:
 if left_img and right_img:
     st.divider()
     for label, file in [("Left", left_img), ("Right", right_img)]:
-        with open(f"temp_{label}.jpg", "wb") as f:
+        # Save uploaded file to temporary directory
+        temp_file_path = os.path.join(st.session_state.temp_dir, f"temp_{label}.jpg")
+        with open(temp_file_path, "wb") as f:
             f.write(file.getbuffer())
 
-        image, landmarks = detect_keypoints(f"temp_{label}.jpg")
-        annotated, deviations = plumb_line_analysis(image, landmarks)
-        report, score, condition = interpret_posture(deviations, label)
+        try:
+            image, landmarks = detect_keypoints(temp_file_path)
+            
+            # Check if landmarks were detected
+            if not landmarks:
+                st.error(f"❌ No body landmarks detected in {label} side image. Please ensure the full body is visible.")
+                continue
+            
+            annotated, deviations = plumb_line_analysis(image, landmarks)
+            report, score, condition = interpret_posture(deviations, label)
 
-        st.subheader(f"📸 {label} Side View Analysis")
-        st.image(convert_to_bytes(annotated), caption=f"{label} Side Annotated Image", use_container_width=True)
+            st.subheader(f"📸 {label} Side View Analysis")
+            st.image(convert_to_bytes(annotated), caption=f"{label} Side Annotated Image", use_container_width=True)
 
-        st.text_area(f"{label} Side Report", report, height=200)
+            st.text_area(f"{label} Side Report", report, height=200, disabled=True)
 
-        # Add visual score bar
-        st.progress(score / 100)
-        st.markdown(f"**Posture Condition:** {condition}")
+            # Add visual score bar
+            st.progress(score / 100)
+            st.markdown(f"**Posture Condition:** {condition}")
+        
+        except Exception as e:
+            st.error(f"❌ Error processing {label} side image: {str(e)}")
+            continue
 
     st.success("✅ Posture analysis complete! Review both sides for asymmetry or tilt patterns.")
 else:
-    st.info("Please upload both Left and Right side images to begin the analysis.")
+    st.info("📤 Please upload both Left and Right side images to begin the analysis.")
