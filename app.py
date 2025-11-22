@@ -6,19 +6,28 @@ import tempfile
 import os
 from PIL import Image, ImageDraw
 
-# Initialize mediapipe pose
-mp_pose = mp.solutions.pose
-pose = mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5)
-
 # Initialize session state
 if 'temp_dir' not in st.session_state:
     st.session_state.temp_dir = tempfile.mkdtemp()
+
+# Initialize mediapipe pose with caching
+@st.cache_resource
+def load_pose_model():
+    mp_pose = mp.solutions.pose
+    return mp_pose, mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5)
+
+mp_pose, pose = load_pose_model()
 
 # -----------------------------------
 # Function 1: Detect Key Landmarks
 # -----------------------------------
 def detect_keypoints(image_path):
     image = Image.open(image_path).convert('RGB')
+    # Resize image to reduce memory usage (max 720p)
+    max_size = 720
+    if max(image.size) > max_size:
+        image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+    
     image_array = np.array(image)
     results = pose.process(image_array)
     landmarks = {}
@@ -117,7 +126,8 @@ def interpret_posture(deviations, side):
 # -----------------------------------
 def convert_to_bytes(image):
     buf = BytesIO()
-    image.save(buf, format='PNG')
+    # Use JPEG with compression to reduce memory
+    image.save(buf, format='JPEG', quality=85, optimize=True)
     buf.seek(0)
     return buf
 
@@ -161,10 +171,18 @@ if left_img and right_img:
             # Add visual score bar
             st.progress(score / 100)
             st.markdown(f"**Posture Condition:** {condition}")
+            
+            # Clean up memory
+            del image, landmarks, annotated, deviations, report
         
         except Exception as e:
             st.error(f"❌ Error processing {label} side image: {str(e)}")
             continue
+        
+        finally:
+            # Clean up temporary file
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
 
     st.success("✅ Posture analysis complete! Review both sides for asymmetry or tilt patterns.")
 else:
