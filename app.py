@@ -1,10 +1,10 @@
 import streamlit as st
-import cv2
 import mediapipe as mp
 import numpy as np
 from io import BytesIO
 import tempfile
 import os
+from PIL import Image, ImageDraw
 
 # Initialize mediapipe pose
 mp_pose = mp.solutions.pose
@@ -18,12 +18,12 @@ if 'temp_dir' not in st.session_state:
 # Function 1: Detect Key Landmarks
 # -----------------------------------
 def detect_keypoints(image_path):
-    image = cv2.imread(image_path)
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    results = pose.process(image_rgb)
+    image = Image.open(image_path).convert('RGB')
+    image_array = np.array(image)
+    results = pose.process(image_array)
     landmarks = {}
     if results.pose_landmarks:
-        h, w, _ = image.shape
+        h, w = image.size[1], image.size[0]
         for id, lm in enumerate(results.pose_landmarks.landmark):
             landmarks[id] = (int(lm.x * w), int(lm.y * h))
     return image, landmarks
@@ -33,9 +33,12 @@ def detect_keypoints(image_path):
 # -----------------------------------
 def plumb_line_analysis(image, landmarks):
     annotated = image.copy()
+    draw = ImageDraw.Draw(annotated)
     ankle_x = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value][0]
-    h, w, _ = image.shape
-    cv2.line(annotated, (ankle_x, 0), (ankle_x, h), (0, 255, 0), 2)
+    h, w = image.size[1], image.size[0]
+    
+    # Draw plumb line (vertical green line)
+    draw.line([(ankle_x, 0), (ankle_x, h)], fill=(0, 255, 0), width=2)
 
     key_points = {
         "Ear": landmarks[mp_pose.PoseLandmark.LEFT_EAR.value],
@@ -48,8 +51,10 @@ def plumb_line_analysis(image, landmarks):
     for part, (x, y) in key_points.items():
         deviation = x - ankle_x
         deviations[part] = deviation
-        cv2.circle(annotated, (x, y), 6, (0, 0, 255), -1)
-        cv2.line(annotated, (x, y), (ankle_x, y), (255, 0, 0), 1)
+        # Draw circle at landmark
+        draw.ellipse([(x-6, y-6), (x+6, y+6)], fill=(0, 0, 255))
+        # Draw horizontal line to plumb line
+        draw.line([(x, y), (ankle_x, y)], fill=(255, 0, 0), width=1)
 
     return annotated, deviations
 
@@ -111,9 +116,10 @@ def interpret_posture(deviations, side):
 # Function 4: Convert CV2 Image for Display
 # -----------------------------------
 def convert_to_bytes(image):
-    img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    _, buf = cv2.imencode('.png', img_rgb)
-    return BytesIO(buf)
+    buf = BytesIO()
+    image.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
 
 # -----------------------------------
 # Streamlit UI
