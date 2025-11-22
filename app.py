@@ -10,18 +10,28 @@ from PIL import Image, ImageDraw
 if 'temp_dir' not in st.session_state:
     st.session_state.temp_dir = tempfile.mkdtemp()
 
-# Initialize mediapipe pose with caching
+# Initialize mediapipe pose with caching (lazy load)
 @st.cache_resource
 def load_pose_model():
     mp_pose = mp.solutions.pose
-    return mp_pose, mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5)
+    pose = mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5)
+    return mp_pose, pose
 
-mp_pose, pose = load_pose_model()
+# Only load when needed
+_mp_pose = None
+_pose = None
+
+def get_pose_model():
+    global _mp_pose, _pose
+    if _mp_pose is None:
+        _mp_pose, _pose = load_pose_model()
+    return _mp_pose, _pose
 
 # -----------------------------------
 # Function 1: Detect Key Landmarks
 # -----------------------------------
 def detect_keypoints(image_path):
+    _, pose = get_pose_model()
     image = Image.open(image_path).convert('RGB')
     # Resize image to reduce memory usage (max 720p)
     max_size = 720
@@ -41,6 +51,7 @@ def detect_keypoints(image_path):
 # Function 2: Draw Plumb Line & Measure Deviations
 # -----------------------------------
 def plumb_line_analysis(image, landmarks):
+    mp_pose, _ = get_pose_model()
     annotated = image.copy()
     draw = ImageDraw.Draw(annotated)
     ankle_x = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value][0]
